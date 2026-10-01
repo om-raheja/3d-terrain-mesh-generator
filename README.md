@@ -92,10 +92,11 @@ Because the index buffer shares vertices between neighbouring quads, the accumul
 smooth-shaded normal directional lighting needs — flat ground reads `N ≈ (0,1,0)`, a 45° slope reads
 `N ≈ (0.7, 0.7, 0)`.
 
-**Validation:** `scripts/verify.mjs` compares the computed normals against the analytic normal of the
-height field from central differences, `normalize(-∂h/∂x, 1, -∂h/∂z)`. Mean dot product **0.9987**,
-worst vertex **0.9760** over 15,876 interior vertices. The "Normal lines" checkbox draws every normal
-so you can see them splay outward on ridges.
+**Validation:** `tests/normals.test.mjs` compares the computed normals against the analytic normal of
+the height field from central differences, `normalize(-∂h/∂x, 1, -∂h/∂z)`, across four seed/resolution
+combinations: the mean dot product must exceed **0.99** everywhere (it lands at **0.9987** for the
+default 128² grid, worst vertex 0.976 over 15,876 interior vertices). The "Normal lines" checkbox
+draws every normal so you can see them splay outward on ridges.
 
 ### 4. The height shader (the filter)
 
@@ -134,18 +135,26 @@ around in the console while recording.
 
 ---
 
-## Verification
+## Tests
 
 ```bash
 npm install
-npm run verify
+npm test          # 148 checks across 7 files, ~20 s
 ```
 
-`scripts/verify.mjs` runs 15 checks: grid topology, CCW winding, unit-length normals, the analytic
-normal comparison above, then boots headless Chromium and asserts there are no console errors, that
-the framebuffer actually contains lit terrain (green valleys + white peaks + a wide luminance range),
-that toggles apply, that a parameter change rebuilds the mesh, and that a 256² rebuild stays under
-budget. It drops screenshots in `/tmp/opencode/`.
+The suite is split between pure-Node tests for the math and headless-Chromium tests for the renderer:
+
+| File | Covers |
+| --- | --- |
+| `tests/noise.test.mjs` | PRNG determinism/uniformity, Perlin lattice + continuity + bounds, fBm normalisation, octave detail, heightfield scaling |
+| `tests/geometry.test.mjs` | vertex/triangle counts, index bounds, watertight quad sharing, Y-from-heightmap, XZ bounds, UV ranges/monotonicity, degenerate triangles |
+| `tests/normals.test.mjs` | unit length, closed-form planes, Gaussian peak orientation, mirror symmetry, translation invariance, **analytic central-difference comparison** |
+| `tests/shader-units.test.mjs` | material/uniform construction, GLSL source contract, `setSunAngles` math |
+| `tests/source.test.mjs` | anti-cheat: no built-in terrain/plane helpers, hand-written attributes and cross products, project contract |
+| `tests/shader-browser.test.mjs` | real GLSL compile + link, height→uniform plumbing, framebuffer probes for the colour ramp, slope mask and `dot(N, L)` lighting |
+| `tests/render.test.mjs` | UI wiring, live regeneration at every resolution, determinism, lighting controls, toggles, geometry disposal, resize, pixel output |
+
+The headless tests boot a static server and a cached Chromium (set `CHROME_PATH` if yours lives elsewhere), read pixels straight out of the WebGL framebuffer, and drop a screenshot in `/tmp/opencode/terrain-suite.png`.
 
 ---
 
@@ -157,7 +166,7 @@ src/noise.js        seeded Perlin + fBm → 2D heightmap
 src/terrain.js      heightmap → positions / UVs / indices / normals
 src/shaders.js      custom vertex + fragment shader (height colouring, lighting)
 src/main.js         scene, camera, UI wiring, rebuild loop
-scripts/verify.mjs  math + headless render checks
+tests/*.test.mjs    math + headless render checks (npm test)
 ```
 
 ---
@@ -182,8 +191,8 @@ scripts/verify.mjs  math + headless render checks
    plus ambient, fog and gamma."
 6. **1:55 — Live demo.** Drag amplitude and seed, toggle wireframe and normals, sweep the sun.
    "Everything rebuilds in about 20 milliseconds and the colours follow the new heights immediately."
-7. **2:10 — Wrap.** "All the math is in `terrain.js` and `shaders.js`, and `npm run verify` runs 15
-   automated checks including the normal comparison."
+7. **2:10 — Wrap.** "All the math is in `terrain.js` and `shaders.js`, and `npm test` runs 148
+   automated checks, including the normal comparison against the analytic derivative."
 
 ---
 

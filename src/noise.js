@@ -20,7 +20,11 @@ export function mulberry32(seed) {
 
 /**
  * Classic 2D Perlin gradient noise with a seeded permutation table.
- * Returns roughly [-1, 1].
+ *
+ * Returns roughly [-1.4, 1.4]: the classic gradient set is not unit-length
+ * (diagonal gradients are √2, axis gradients 1) and the fade/lerp step can
+ * overshoot slightly, so the 1.4 scale below trades a tight bound for a
+ * nicely distributed one. Zero exactly on integer lattice points.
  */
 export function createPerlin2D(seed) {
   const rand = mulberry32(seed);
@@ -79,8 +83,9 @@ export function createPerlin2D(seed) {
  *
  *   h = Σ (amplitude_k * noise(freq_k * p)) / Σ amplitude_k
  *
- * Normalising by the total amplitude keeps the result in ~[-1, 1] regardless
- * of how many octaves are used.
+ * Normalising by the total amplitude keeps the result inside the same envelope
+ * as a single octave (≈±1.4 with this gradient set) no matter how many
+ * octaves are stacked, so `amplitude` stays the only height knob.
  */
 export function fbm(noise, x, y, { octaves, frequency, persistence, lacunarity }) {
   let amplitude = 1;
@@ -131,9 +136,13 @@ export function createHeightField({
       });
 
       const y = h * amplitude;
-      data[j * resolution + i] = y;
-      if (y < min) min = y;
-      if (y > max) max = y;
+      const idx = j * resolution + i;
+      data[idx] = y;
+      // Track the *stored* value: the array is Float32, so the mesh (and the
+      // shader uniforms fed from min/max) see this, not the double above.
+      const stored = data[idx];
+      if (stored < min) min = stored;
+      if (stored > max) max = stored;
     }
   }
 

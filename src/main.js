@@ -202,7 +202,7 @@ window.addEventListener('resize', () => {
 
 // Debug handle: handy in the console while narrating the Loom walkthrough,
 // and used by scripts/verify.mjs to assert the shader actually drew something.
-window.__APP = { renderer, scene, camera, material, terrain, params, controls, rebuild };
+window.__APP = { renderer, scene, camera, material, terrain, params, controls, rebuild, THREE };
 
 ready = true;
 rebuild();

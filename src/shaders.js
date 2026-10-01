@@ -77,8 +77,13 @@ const fragmentShader = /* glsl */ `
     float ndl = max(dot(N, uSunDir), 0.0);
 
     // 4. Blinn-Phong specular: half-vector between sun and viewer.
-    vec3 V = normalize(cameraPosition - vWorldPos);
-    vec3 H = normalize(uSunDir + V);
+    //    Guard the normalisation — when the sun sits exactly opposite the
+    //    view direction uSunDir + V has zero length and NaN would spread
+    //    through the whole fragment.
+    vec3 V = cameraPosition - vWorldPos;
+    V /= max(length(V), 1e-5);
+    vec3 halfway = uSunDir + V;
+    vec3 H = halfway / max(length(halfway), 1e-5);
     float spec = pow(max(dot(N, H), 0.0), uShininess) * uSpecular;
 
     // 5. Sky-tinted ambient (upward normals get a little more sky light).
