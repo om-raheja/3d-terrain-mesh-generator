@@ -105,10 +105,13 @@ function applyLighting() {
   setSunAngles(material.uniforms, params.sunAzimuth, params.sunElevation);
 }
 
-// Coalesce rapid slider drags into one rebuild per frame.
+// Coalesce rapid slider drags into one rebuild per frame. During startup the
+// initial paint() pass only records values; rebuild() is called explicitly
+// once at the end instead.
 let rebuildQueued = false;
+let ready = false;
 function scheduleRebuild() {
-  if (rebuildQueued) return;
+  if (!ready || rebuildQueued) return;
   rebuildQueued = true;
   requestAnimationFrame(() => {
     rebuildQueued = false;
@@ -201,6 +204,7 @@ window.addEventListener('resize', () => {
 // and used by scripts/verify.mjs to assert the shader actually drew something.
 window.__APP = { renderer, scene, camera, material, terrain, params, controls, rebuild };
 
+ready = true;
 rebuild();
 applyLighting();
 animate();
