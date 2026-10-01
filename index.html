@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Procedural 3D Terrain — Mesh Generator &amp; Shader</title>
+  <style>
+    :root {
+      --panel-bg: rgba(14, 17, 23, 0.88);
+      --panel-border: rgba(255, 255, 255, 0.09);
+      --accent: #5ad18b;
+      --text: #d7dee8;
+      --muted: #8a94a3;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #0b0e13;
+      color: var(--text);
+      font: 13px/1.45 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+    }
+    canvas { display: block; }
+
+    #panel {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      width: 268px;
+      max-height: calc(100vh - 28px);
+      overflow-y: auto;
+      padding: 14px 15px 16px;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+      user-select: none;
+    }
+    #panel h1 {
+      margin: 0 0 2px;
+      font-size: 14px;
+      font-weight: 650;
+      letter-spacing: 0.2px;
+    }
+    #panel .sub {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .row { margin: 9px 0; }
+    .row label {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 11.5px;
+      letter-spacing: 0.2px;
+    }
+    .row label b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+    input[type="range"] {
+      width: 100%;
+      height: 4px;
+      margin: 0;
+      appearance: none;
+      background: rgba(255, 255, 255, 0.14);
+      border-radius: 4px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid #0b0e13;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid #0b0e13;
+    }
+    .checks {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 8px;
+      margin: 11px 0;
+    }
+    .checks label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 11.5px;
+      cursor: pointer;
+    }
+    .checks input { accent-color: var(--accent); }
+    button {
+      width: 100%;
+      padding: 8px 10px;
+      margin-top: 4px;
+      border: 1px solid rgba(90, 209, 139, 0.4);
+      border-radius: 8px;
+      background: rgba(90, 209, 139, 0.14);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+    }
+    button:hover { background: rgba(90, 209, 139, 0.24); }
+    #stats {
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--panel-border);
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    #stats div { display: flex; justify-content: space-between; }
+    #stats b { color: var(--text); font-weight: 600; }
+    #hint {
+      position: fixed;
+      right: 14px;
+      bottom: 12px;
+      color: rgba(215, 222, 232, 0.55);
+      font-size: 11px;
+      text-align: right;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="panel">
+    <h1>Procedural Terrain Generator</h1>
+    <p class="sub">heightmap &rarr; mesh &rarr; normals &rarr; height shader</p>
+
+    <div class="row">
+      <label for="seed">Seed <b id="seedVal">1337</b></label>
+      <input id="seed" type="range" min="0" max="9999" step="1" value="1337" />
+    </div>
+
+    <div class="row">
+      <label for="resolution">Grid resolution <b id="resolutionVal">128</b></label>
+      <input id="resolution" type="range" min="16" max="256" step="16" value="128" />
+    </div>
+
+    <div class="row">
+      <label for="noiseScale">Noise scale <b id="noiseScaleVal">3.0</b></label>
+      <input id="noiseScale" type="range" min="0.5" max="10" step="0.1" value="3" />
+    </div>
+
+    <div class="row">
+      <label for="octaves">Octaves <b id="octavesVal">5</b></label>
+      <input id="octaves" type="range" min="1" max="7" step="1" value="5" />
+    </div>
+
+    <div class="row">
+      <label for="persistence">Persistence <b id="persistenceVal">0.50</b></label>
+      <input id="persistence" type="range" min="0.2" max="0.8" step="0.01" value="0.5" />
+    </div>
+
+    <div class="row">
+      <label for="amplitude">Height amplitude <b id="amplitudeVal">26</b></label>
+      <input id="amplitude" type="range" min="4" max="60" step="1" value="26" />
+    </div>
+
+    <div class="row">
+      <label for="sunAzimuth">Sun azimuth <b id="sunAzimuthVal">45&deg;</b></label>
+      <input id="sunAzimuth" type="range" min="0" max="360" step="1" value="45" />
+    </div>
+
+    <div class="row">
+      <label for="sunElevation">Sun elevation <b id="sunElevationVal">42&deg;</b></label>
+      <input id="sunElevation" type="range" min="5" max="85" step="1" value="42" />
+    </div>
+
+    <div class="checks">
+      <label><input id="wireframe" type="checkbox" /> Wireframe</label>
+      <label><input id="showNormals" type="checkbox" /> Normal lines</label>
+      <label><input id="animateSun" type="checkbox" /> Animate sun</label>
+      <label><input id="autorotate" type="checkbox" checked /> Orbit camera</label>
+    </div>
+
+    <button id="regenerate">&#8635; New random seed</button>
+
+    <div id="stats">
+      <div><span>Vertices</span><b id="statVerts">–</b></div>
+      <div><span>Triangles</span><b id="statTris">–</b></div>
+      <div><span>Height range</span><b id="statHeight">–</b></div>
+      <div><span>Build time</span><b id="statTime">–</b></div>
+    </div>
+  </div>
+
+  <div id="hint">drag to orbit &middot; scroll to zoom &middot; right-drag to pan</div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

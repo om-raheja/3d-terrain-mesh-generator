@@ -1,0 +1,15 @@
+{
+  "name": "procedural-3d-terrain",
+  "version": "1.0.0",
+  "description": "Procedural 3D terrain mesh generator with programmatic vertices/UVs/normals and a height-based custom shader.",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "verify": "node scripts/verify.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0",
+    "three": "^0.169.0"
+  },
+  "license": "MIT"
+}
