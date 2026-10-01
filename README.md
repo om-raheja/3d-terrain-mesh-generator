@@ -107,7 +107,7 @@ draws every normal so you can see them splay outward on ridges.
 2. **Colour ramp** on `t`: dark valley green → grass → rock → snow, blended with `smoothstep`.
 3. **Slope mask**: `slope = 1 - N.y` forces steep faces to exposed rock regardless of altitude.
 4. **Lambert diffuse**: `max(dot(N, sunDir), 0)` — this is what makes slopes and valleys readable.
-5. **Blinn-Phong specular**: half-vector `H = normalize(sunDir + viewDir)`, `pow(dot(N,H), shininess)`.
+5. **Blinn-Phong specular**: half-vector `H = (sunDir + viewDir) / max(|sunDir + viewDir|, ε)`, `pow(dot(N,H), shininess)`.
 6. Sky-tinted ambient (upward normals catch more light), distance fog, then `pow(color, 1/2.2)`
    gamma encoding.
 
@@ -139,7 +139,7 @@ around in the console while recording.
 
 ```bash
 npm install
-npm test          # 148 checks across 7 files, ~20 s
+npm test          # 314 checks across 10 files, ~35 s
 ```
 
 The suite is split between pure-Node tests for the math and headless-Chromium tests for the renderer:
@@ -147,12 +147,15 @@ The suite is split between pure-Node tests for the math and headless-Chromium te
 | File | Covers |
 | --- | --- |
 | `tests/noise.test.mjs` | PRNG determinism/uniformity, Perlin lattice + continuity + bounds, fBm normalisation, octave detail, heightfield scaling |
+| `tests/noise-properties.test.mjs` | 256-periodic lattice, degenerate fBm inputs (0/negative/NaN octaves, zero frequency), hostile persistence, heightfield guards, seed/octave/scale sweeps, randomised fuzz |
 | `tests/geometry.test.mjs` | vertex/triangle counts, index bounds, watertight quad sharing, Y-from-heightmap, XZ bounds, UV ranges/monotonicity, degenerate triangles |
+| `tests/geometry-properties.test.mjs` | edge multiplicities + boundary-edge counts, quad corner layout, resolution sweep (2…64), index storage, `buildGrid` validation, normal quality (adjacent dots, second-order convergence, triangle-order invariance), degenerate inputs, fuzz |
 | `tests/normals.test.mjs` | unit length, closed-form planes, Gaussian peak orientation, mirror symmetry, translation invariance, **analytic central-difference comparison** |
 | `tests/shader-units.test.mjs` | material/uniform construction, GLSL source contract, `setSunAngles` math |
 | `tests/source.test.mjs` | anti-cheat: no built-in terrain/plane helpers, hand-written attributes and cross products, project contract |
-| `tests/shader-browser.test.mjs` | real GLSL compile + link, height→uniform plumbing, framebuffer probes for the colour ramp, slope mask and `dot(N, L)` lighting |
-| `tests/render.test.mjs` | UI wiring, live regeneration at every resolution, determinism, lighting controls, toggles, geometry disposal, resize, pixel output |
+| `tests/acceptance.test.mjs` | the bounty rubric written out as checks: programmatic mesh, correct normals, Y-driven colouring, documented maths, runnable repo |
+| `tests/shader-browser.test.mjs` | real GLSL compile + link, height→uniform plumbing, framebuffer probes for the colour ramp (six stops), slope mask, `dot(N, L)`, specular half-vector, height-range remapping, distance fog |
+| `tests/render.test.mjs` | UI wiring, live regeneration at every resolution, build budgets, slider extremes, determinism, lighting vs framebuffer luminance, toggles, mesh integrity (UV/normal/bbox), `gl.getError`, geometry disposal, resize, pixel output |
 
 The headless tests boot a static server and a cached Chromium (set `CHROME_PATH` if yours lives elsewhere), read pixels straight out of the WebGL framebuffer, and drop a screenshot in `/tmp/opencode/terrain-suite.png`.
 
@@ -191,7 +194,7 @@ tests/*.test.mjs    math + headless render checks (npm test)
    plus ambient, fog and gamma."
 6. **1:55 — Live demo.** Drag amplitude and seed, toggle wireframe and normals, sweep the sun.
    "Everything rebuilds in about 20 milliseconds and the colours follow the new heights immediately."
-7. **2:10 — Wrap.** "All the math is in `terrain.js` and `shaders.js`, and `npm test` runs 148
+7. **2:10 — Wrap.** "All the math is in `terrain.js` and `shaders.js`, and `npm test` runs 314
    automated checks, including the normal comparison against the analytic derivative."
 
 ---

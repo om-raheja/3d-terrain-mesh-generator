@@ -30,7 +30,19 @@ import * as THREE from 'three';
  *   triangles:  (a, b, c)  and  (c, b, d)
  */
 export function buildGrid(field, size = 200) {
-  const N = field.resolution;
+  const N = field?.resolution;
+  if (!Number.isInteger(N) || N < 2) {
+    throw new RangeError(`grid resolution must be an integer >= 2 (got ${N})`);
+  }
+  if (!Number.isFinite(size) || size <= 0) {
+    throw new RangeError(`terrain size must be a positive finite number (got ${size})`);
+  }
+  if (!field.data || field.data.length !== N * N) {
+    throw new RangeError(
+      `height field must hold exactly ${N * N} samples (got ${field.data?.length})`
+    );
+  }
+
   const vertexCount = N * N;
 
   const positions = new Float32Array(vertexCount * 3);
@@ -40,8 +52,13 @@ export function buildGrid(field, size = 200) {
   for (let j = 0; j < N; j++) {
     for (let i = 0; i < N; i++) {
       const idx = j * N + i;
+      const height = field.data[idx];
+      // One NaN here would poison an entire ring of normals, so fail loudly.
+      if (!Number.isFinite(height)) {
+        throw new TypeError(`height field contains a non-finite value at index ${idx}`);
+      }
       positions[idx * 3 + 0] = (i * inv - 0.5) * size;        // X
-      positions[idx * 3 + 1] = field.data[idx];                // Y = height
+      positions[idx * 3 + 1] = height;                         // Y = height
       positions[idx * 3 + 2] = (j * inv - 0.5) * size;        // Z
       uvs[idx * 2 + 0] = i * inv;                              // U 0..1
       uvs[idx * 2 + 1] = j * inv;                              // V 0..1
@@ -113,10 +130,17 @@ export function computeVertexNormals(positions, indices) {
 
   for (let v = 0; v < vertexCount; v++) {
     const o = v * 3;
-    const len = Math.hypot(normals[o], normals[o + 1], normals[o + 2]) || 1;
-    normals[o] /= len;
-    normals[o + 1] /= len;
-    normals[o + 2] /= len;
+    const len = Math.hypot(normals[o], normals[o + 1], normals[o + 2]);
+    if (len > 0) {
+      normals[o] /= len;
+      normals[o + 1] /= len;
+      normals[o + 2] /= len;
+    } else {
+      // Every face touching this vertex was degenerate (zero area). Rather
+      // than emitting a zero-length normal — which would shade black —
+      // default to pointing straight up.
+      normals[o + 1] = 1;
+    }
   }
 
   return normals;

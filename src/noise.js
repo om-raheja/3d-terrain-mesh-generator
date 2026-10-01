@@ -88,18 +88,23 @@ export function createPerlin2D(seed) {
  * octaves are stacked, so `amplitude` stays the only height knob.
  */
 export function fbm(noise, x, y, { octaves, frequency, persistence, lacunarity }) {
+  const count = Math.floor(octaves);
+  // Zero (or negative, or non-finite) octaves would leave norm at 0 and turn
+  // the whole field into NaN — return flat ground instead.
+  if (!Number.isFinite(count) || count < 1) return 0;
+
   let amplitude = 1;
   let sum = 0;
   let norm = 0;
   let freq = frequency;
 
-  for (let o = 0; o < octaves; o++) {
+  for (let o = 0; o < count; o++) {
     sum += noise(x * freq, y * freq) * amplitude;
     norm += amplitude;
     amplitude *= persistence;
     freq *= lacunarity;
   }
-  return sum / norm;
+  return norm === 0 ? 0 : sum / norm;
 }
 
 /**
@@ -115,6 +120,16 @@ export function createHeightField({
   lacunarity = 2,
   amplitude = 26,
 } = {}) {
+  if (!Number.isInteger(resolution) || resolution < 2) {
+    throw new RangeError(`resolution must be an integer >= 2 (got ${resolution})`);
+  }
+  if (!Number.isFinite(amplitude)) {
+    throw new RangeError(`amplitude must be finite (got ${amplitude})`);
+  }
+  if (!Number.isFinite(noiseScale)) {
+    throw new RangeError(`noiseScale must be finite (got ${noiseScale})`);
+  }
+
   const noise = createPerlin2D(seed);
   const data = new Float32Array(resolution * resolution);
 

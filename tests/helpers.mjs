@@ -131,6 +131,7 @@ export function readFrame() {
   let bright = 0;
   let lumMin = 255;
   let lumMax = 0;
+  let lumSum = 0;
 
   for (let y = 0; y < h; y += 3) {
     for (let x = 0; x < w; x += 3) {
@@ -148,10 +149,22 @@ export function readFrame() {
       const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
       lumMin = Math.min(lumMin, lum);
       lumMax = Math.max(lumMax, lum);
+      lumSum += lum;
       if (g > r + 8 && g > b + 8) green++;
       if (r > 200 && g > 200 && b > 200) bright++;
     }
   }
 
-  return { sky, terrain, total, green, bright, lumMin, lumMax, w, h };
+  return {
+    sky,
+    terrain,
+    total,
+    green,
+    bright,
+    lumMin,
+    lumMax,
+    lumMean: terrain ? lumSum / terrain : 0,
+    w,
+    h,
+  };
 }

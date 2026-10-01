@@ -246,7 +246,7 @@ describe('symmetry', () => {
 
   it('mirroring a rough terrain keeps the normals pointing the mirrored way', () => {
     // The mesh is NOT the mirror-image triangulation: each quad is always cut
-    // on the a-d diagonal, and mirroring swaps which diagonal that is. So the
+    // on its b–c diagonal, and mirroring swaps which corner that is. So the
     // two normal fields agree in direction but not bit-for-bit — asserting
     // exact equality here would be asserting something false.
     const N = 48;

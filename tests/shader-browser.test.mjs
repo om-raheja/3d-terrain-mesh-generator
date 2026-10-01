@@ -151,17 +151,38 @@ describe('height -> uniform plumbing', () => {
 });
 
 describe('fragment shader behaviour (probe quad)', () => {
-  /** Renders a unit-lit quad spanning y = 0..30 and samples three rows. */
-  const sampleProbe = (normal, sun) =>
-    app.page.evaluate(
-      ({ normal, sun }) => {
-        const { THREE, renderer, material } = window.__APP;
-        const savedMin = material.uniforms.uMinHeight.value;
-        const savedMax = material.uniforms.uMaxHeight.value;
-        const savedSun = material.uniforms.uSunDir.value.clone();
+  const DEFAULT_ROWS = [0.03, 0.68, 0.97];
 
-        material.uniforms.uMinHeight.value = 0;
-        material.uniforms.uMaxHeight.value = 30;
+  /**
+   * Renders a lit quad spanning y = 0..30 with a constant vertex normal and
+   * samples it down the centre column.
+   *
+   *   opts.normal   normal shared by all four corners (default flat ground —
+   *                 the slope mask keys off N.y, so probes must be explicit)
+   *   opts.sun      direction TOWARD the sun
+   *   opts.range    [min, max] height range handed to the shader
+   *   opts.cameraZ  camera distance — this is what drives the fog term
+   *   opts.uniforms extra uniform overrides, e.g. { uSpecular: 0.3 }
+   *   opts.rows     normalised heights to sample
+   *
+   * Returns { bottom, middle, top } for the default rows, else the raw array.
+   */
+  const probe = (opts) =>
+    app.page.evaluate(
+      ({ normal, sun, range, cameraZ, uniforms, rows }) => {
+        const { THREE, renderer, material } = window.__APP;
+
+        // Remember every uniform we poke so the real app state is restored.
+        const saved = [];
+        const override = (key, value) => {
+          saved.push([key, material.uniforms[key].value]);
+          material.uniforms[key].value = value;
+        };
+        override('uMinHeight', range[0]);
+        override('uMaxHeight', range[1]);
+        for (const [key, value] of Object.entries(uniforms)) override(key, value);
+
+        const savedSun = material.uniforms.uSunDir.value.clone();
         material.uniforms.uSunDir.value.copy(new THREE.Vector3(...sun));
 
         const geometry = new THREE.BufferGeometry();
@@ -172,13 +193,10 @@ describe('fragment shader behaviour (probe quad)', () => {
             3
           )
         );
-        const n = normal;
         geometry.setAttribute(
           'normal',
           new THREE.BufferAttribute(
-            new Float32Array([
-              ...n, ...n, ...n, ...n,
-            ]),
+            new Float32Array([...normal, ...normal, ...normal, ...normal]),
             3
           )
         );
@@ -191,8 +209,9 @@ describe('fragment shader behaviour (probe quad)', () => {
         const mesh = new THREE.Mesh(geometry, material);
         const scene = new THREE.Scene();
         scene.add(mesh);
-        const camera = new THREE.OrthographicCamera(-20, 20, 30, 0, 0.1, 500);
-        camera.position.set(0, 0, 100);
+        // Far plane must clear the fogged camera distances used by the probes.
+        const camera = new THREE.OrthographicCamera(-20, 20, 30, 0, 0.1, 5000);
+        camera.position.set(0, 0, cameraZ);
 
         renderer.setRenderTarget(null);
         renderer.render(scene, camera);
@@ -203,27 +222,39 @@ describe('fragment shader behaviour (probe quad)', () => {
         const px = new Uint8Array(w * h * 4);
         gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
 
-        const at = (fy) => {
+        const samples = rows.map((fy) => {
           const y = Math.min(h - 1, Math.max(0, Math.round(fy * (h - 1))));
           const o = (y * w + Math.floor(w / 2)) * 4;
           return [px[o], px[o + 1], px[o + 2]];
-        };
-        // y = 0.03 -> t 0.03 (valley), y = 0.68 -> t 0.68 (rock, before the
-        // snow band starts at 0.74), y = 0.97 -> t 0.97 (snow cap).
-        const rows = { bottom: at(0.03), middle: at(0.68), top: at(0.97) };
+        });
 
         geometry.dispose();
-        material.uniforms.uMinHeight.value = savedMin;
-        material.uniforms.uMaxHeight.value = savedMax;
+        for (let i = saved.length - 1; i >= 0; i--) {
+          material.uniforms[saved[i][0]].value = saved[i][1];
+        }
         material.uniforms.uSunDir.value.copy(savedSun);
-        return rows;
+        return samples;
       },
-      { normal, sun }
+      opts
     );
+
+  const sampleProbe = async (opts) => {
+    const merged = {
+      normal: [0, 1, 0],
+      sun: [0.5, 0.8, 0.3],
+      range: [0, 30],
+      cameraZ: 100,
+      uniforms: {},
+      rows: DEFAULT_ROWS,
+      ...opts,
+    };
+    const out = await probe(merged);
+    return opts.rows ? out : { bottom: out[0], middle: out[1], top: out[2] };
+  };
 
   it('colours bottom valley / middle rock / top snow', async () => {
     // Normal (0,1,0) = flat ground (the shader's slope mask keys off N.y).
-    const rows = await sampleProbe([0, 1, 0], [0.5, 0.8, 0.3]);
+    const rows = await sampleProbe({ normal: [0, 1, 0], sun: [0.5, 0.8, 0.3] });
     const [br, bg, bb] = rows.bottom;
     const [mr, mg, mb] = rows.middle;
     const [tr, tg, tb] = rows.top;
@@ -245,8 +276,8 @@ describe('fragment shader behaviour (probe quad)', () => {
 
   it('forces steep slopes to rock even at low altitude (slope mask)', async () => {
     // Same height, two normals: a flat ground normal vs a vertical wall.
-    const flat = await sampleProbe([0, 1, 0], [0.5, 0.8, 0.3]);
-    const wall = await sampleProbe([1, 0, 0], [0.5, 0.8, 0.3]);
+    const flat = await sampleProbe({ normal: [0, 1, 0], sun: [0.5, 0.8, 0.3] });
+    const wall = await sampleProbe({ normal: [1, 0, 0], sun: [0.5, 0.8, 0.3] });
 
     const [fr, fg] = flat.bottom;
     const [wr, wg] = wall.bottom;
@@ -260,8 +291,8 @@ describe('fragment shader behaviour (probe quad)', () => {
     // Deliberately a vertical wall normal (0,0,1): it keeps the slope mask
     // constant so this comparison isolates the lighting term. The half-vector
     // is intentionally NOT exactly -V — see the guard in shaders.js.
-    const towards = await sampleProbe([0, 0, 1], [0, 0, 1]);
-    const away = await sampleProbe([0, 0, 1], [0.6, 0.2, -1]);
+    const towards = await sampleProbe({ normal: [0, 0, 1], sun: [0, 0, 1] });
+    const away = await sampleProbe({ normal: [0, 0, 1], sun: [0.6, 0.2, -1] });
 
     const lit = lum(towards.bottom);
     const dark = lum(away.bottom);
@@ -272,12 +303,103 @@ describe('fragment shader behaviour (probe quad)', () => {
   });
 
   it('produces finite, non-black output when the sun opposes the view', async () => {
-    const rows = await sampleProbe([0, 0, 1], [0, 0, -1]);
+    const rows = await sampleProbe({ normal: [0, 0, 1], sun: [0, 0, -1] });
     for (const [label, rgb] of Object.entries(rows)) {
       const [r, g, b] = rgb;
       assert.ok([r, g, b].every((v) => Number.isInteger(v) && v >= 0 && v <= 255),
         `${label} not a valid byte colour: ${rgb}`);
       assert.ok(lum(rgb) > 0, `${label} came out black — possible NaN`);
     }
+  });
+
+  it('ramps through six distinct stops as height climbs', async () => {
+    const samples = await sampleProbe({ rows: [0.02, 0.2, 0.45, 0.68, 0.8, 0.97] });
+    const L = samples.map(lum);
+
+    // valley floor -> grass climbs
+    assert.ok(L[0] < L[1] && L[1] < L[2], `valley->grass not climbing: ${L}`);
+    // rock band -> snow cap climbs
+    assert.ok(L[3] < L[4] && L[4] < L[5], `rock->snow not climbing: ${L}`);
+    // the cap outshines every lower stop
+    assert.ok(L[5] > L[2], `snow should outshine mid-grass: ${L}`);
+    // no two stops collapse onto the same colour
+    assert.equal(
+      new Set(samples.map((c) => c.join(','))).size,
+      6,
+      `stops collapsed: ${samples.map((c) => c.join('/'))}`
+    );
+  });
+
+  it('re-maps the whole ramp when the height range changes (Y drives colour)', async () => {
+    const base = { normal: [0, 1, 0], sun: [0.5, 0.8, 0.3] };
+    const narrow = await sampleProbe(base); // range 0..30 -> t = 0.97 up top
+    const wide = await sampleProbe({ ...base, range: [0, 60] }); // same altitude, t ≈ 0.49
+
+    assert.ok(Math.min(...narrow.top) > 140, `narrow range should be snow: ${narrow.top}`);
+    assert.ok(Math.min(...wide.top) < 140, `wide range should not be snow: ${wide.top}`);
+    assert.ok(
+      wide.top[1] > wide.top[0],
+      `wide range top should read as grass/rock: ${wide.top}`
+    );
+    // The valley floor is t≈0 under both ranges, so it must not move.
+    assert.ok(
+      Math.abs(wide.bottom[1] - narrow.bottom[1]) < 12,
+      `valley drifted: ${narrow.bottom} vs ${wide.bottom}`
+    );
+  });
+
+  it('specular term tracks the half-vector (uShininess on)', async () => {
+    // N = (0,0,1) freezes the slope mask. Both suns keep N·L = 0.9799; only
+    // one of them mirrors the view vector, so H ∥ N only there.
+    const base = {
+      normal: [0, 0, 1],
+      rows: [0.68],
+      uniforms: { uSpecular: 0.3, uShininess: 40 },
+    };
+    const aligned = await sampleProbe({ ...base, sun: [0, 0.1999, 0.9799] });
+    const swung = await sampleProbe({ ...base, sun: [0.1995, 0, 0.9799] });
+    const d = lum(aligned[0]) - lum(swung[0]);
+
+    assert.ok(
+      d > 8,
+      `aligned ${lum(aligned[0])} vs swung ${lum(swung[0])} — specular not responding to H`
+    );
+  });
+
+  it('vanishes when uSpecular is zeroed (isolation check)', async () => {
+    const base = {
+      normal: [0, 0, 1],
+      rows: [0.68],
+      uniforms: { uShininess: 40 },
+      sun: [0, 0.1999, 0.9799],
+    };
+    const lit = await sampleProbe({ ...base, uniforms: { uShininess: 40, uSpecular: 0.3 } });
+    const matte = await sampleProbe({ ...base, uniforms: { uShininess: 40, uSpecular: 0 } });
+
+    const d = lum(lit[0]) - lum(matte[0]);
+    assert.ok(d > 20, `specular should lift the highlight by far more than ${d}`);
+  });
+
+  it('fades distant fragments into the sky colour (distance fog)', async () => {
+    const opts = { normal: [0, 1, 0], sun: [0.5, 0.8, 0.3], rows: [0.4] };
+    const near = await sampleProbe({ ...opts, cameraZ: 100 });
+    const far = await sampleProbe({ ...opts, cameraZ: 700 });
+    const SKY = [157, 192, 224]; // uFogColor 0x9dc0e0
+
+    const dist = (c) => Math.hypot(c[0] - SKY[0], c[1] - SKY[1], c[2] - SKY[2]);
+    assert.ok(dist(far[0]) < 30, `far sample ${far[0]} not fogged toward ${SKY}`);
+    assert.ok(dist(near[0]) > 60, `near sample ${near[0]} should be un-fogged`);
+    assert.ok(far[0][2] > far[0][0], `fogged fragment should be blue-dominant: ${far[0]}`);
+  });
+
+  it('dims flat ground when the sun sinks to the horizon (N·L term)', async () => {
+    const opts = { normal: [0, 1, 0], rows: [0.4] };
+    const noon = await sampleProbe({ ...opts, sun: [0, 1, 0] });
+    const dusk = await sampleProbe({ ...opts, sun: [1, 0, 0] });
+
+    const bright = lum(noon[0]);
+    const dim = lum(dusk[0]);
+    assert.ok(bright > dim * 2, `noon ${bright} vs dusk ${dim} — Lambert term not applied`);
+    assert.ok(dim > 0, 'the horizon sun must still leave ambient light');
   });
 });
