@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Procedural Terrain Mesh Generator</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+      }
+
+      #app {
+        width: 100%;
+        height: 100%;
+      }
+
+      .overlay {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        padding: 8px 10px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        border-radius: 6px;
+        font-size: 12px;
+        line-height: 1.4;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div class="overlay">Procedural terrain mesh<br />Height-based vertex colors</div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
