@@ -48,6 +48,7 @@ The first deploy authenticates interactively (`npx wrangler login`) or headlessl
 
 | Requirement | Where it lives |
 | --- | --- |
+| Heightmap input: an image **or** a generated 2D noise array | `src/noise.js` → `createHeightField()` (fBm `Float32Array`) and `src/image-heightmap.js` → `heightFieldFromRGBA()` (grayscale pixels) — same field contract |
 | Mesh generated programmatically (no built-in terrain tools) | `src/terrain.js` — positions, UVs and indices written by hand into `BufferGeometry` |
 | Normals correctly calculated for directional lighting | `src/terrain.js` → `computeVertexNormals()` — per-face cross products, area-weighted accumulation |
 | Terrain dynamically coloured/shaded by height (Y-axis) | `src/shaders.js` → fragment shader height ramp + slope mask |
@@ -137,6 +138,29 @@ regenerates — no texture to repaint, no vertex colours to rebake.
 
 ---
 
+## Heightmap inputs
+
+The brief accepts either input, and both converge on the *same* field shape
+(`{ data: Float32Array(resolution²), resolution, min, max, amplitude }`), so the mesh, normals and
+shader downstream are literally shared code — there is no second render path:
+
+| Input | Where | Notes |
+| --- | --- | --- |
+| Generated 2D noise array (default) | `src/noise.js` → `createHeightField()` | seeded Perlin + fBm, driven by the **Seed** slider |
+| Grayscale image | `src/image-heightmap.js` → `heightFieldFromRGBA()` | **Load image heightmap** button in the panel |
+
+The image path is three steps: decode to RGBA on a ≤1024² canvas, bilinearly resample onto the grid
+using the same `i / (resolution - 1)` normalisation as the noise path, then map luminance to height
+with `(BT.601 luma − 0.5) · 2 · amplitude` — black lands at `−amplitude`, mid-grey at sea level,
+white at `+amplitude`, exactly the symmetric range the noise field produces.
+
+In image mode **Grid resolution** and **Height amplitude** keep working (they re-sample and re-scale
+the picture on the next frame); **Back to generated noise** hands control straight back to
+`main.js`. `tests/image-browser.test.mjs` uploads a real gradient through the file picker and
+asserts the mesh, uniforms and normal overlay all switched over.
+
+---
+
 ## Controls
 
 | Control | What it changes |
@@ -150,9 +174,12 @@ regenerates — no texture to repaint, no vertex colours to rebake.
 | Normal lines | Draws every computed vertex normal |
 | Animate sun | Orbits the sun so lighting sweeps across the slopes |
 | New random seed | Re-rolls and rebuilds |
+| Load image heightmap | Grayscale image → bilinear resample → the same mesh pipeline |
+| Back to generated noise | Drops the image and calls `main.js`'s `rebuild()` |
 
 `window.__APP` exposes `{ renderer, scene, camera, material, terrain, params, rebuild }` for poking
-around in the console while recording.
+around in the console while recording; `window.__IMAGE` exposes
+`{ heightFieldFromRGBA, apply, useNoise, status }` for the image path.
 
 ---
 
@@ -160,7 +187,7 @@ around in the console while recording.
 
 ```bash
 npm install
-npm test          # 314 checks across 10 files, ~35 s
+npm test          # 345 checks across 12 files, ~40 s
 ```
 
 The suite is split between pure-Node tests for the math and headless-Chromium tests for the renderer:
@@ -177,6 +204,8 @@ The suite is split between pure-Node tests for the math and headless-Chromium te
 | `tests/acceptance.test.mjs` | the bounty rubric written out as checks: programmatic mesh, correct normals, Y-driven colouring, documented maths, runnable repo |
 | `tests/shader-browser.test.mjs` | real GLSL compile + link, height→uniform plumbing, framebuffer probes for the colour ramp (six stops), slope mask, `dot(N, L)`, specular half-vector, height-range remapping, distance fog |
 | `tests/render.test.mjs` | UI wiring, live regeneration at every resolution, build budgets, slider extremes, determinism, lighting vs framebuffer luminance, toggles, mesh integrity (UV/normal/bbox), `gl.getError`, geometry disposal, resize, pixel output |
+| `tests/image-heightmap.test.mjs` | image → field contract parity with `createHeightField`, BT.601 luma mapping, alpha ignored, bilinear resampling (2×2 midpoints, non-square, 1×1, up/down-sample), determinism, validation, then the image field through `buildGrid` / normals / shader uniforms |
+| `tests/image-browser.test.mjs` | headless upload of a gradient through the file picker: mesh + uniforms + normal-overlay swap, the rebuild watcher (main.js must not revert to noise), framebuffer read-back, revert to noise |
 
 The headless tests boot a static server and a cached Chromium (set `CHROME_PATH` if yours lives elsewhere), read pixels straight out of the WebGL framebuffer, and drop a screenshot in `/tmp/opencode/terrain-suite.png`.
 
@@ -190,6 +219,7 @@ src/noise.js        seeded Perlin + fBm → 2D heightmap
 src/terrain.js      heightmap → positions / UVs / indices / normals
 src/shaders.js      custom vertex + fragment shader (height colouring, lighting)
 src/main.js         scene, camera, UI wiring, rebuild loop
+src/image-heightmap.js  image heightmap → the same field contract (panel file picker)
 tests/*.test.mjs    math + headless render checks (npm test)
 ```
 
