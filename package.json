@@ -5,11 +5,15 @@
   "type": "module",
   "scripts": {
     "start": "python3 -m http.server 8080",
-    "test": "node --test \"tests/*.test.mjs\""
+    "test": "node --test \"tests/*.test.mjs\"",
+    "build": "node scripts/build-assets.mjs",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
     "playwright-core": "^1.63.0",
-    "three": "^0.169.0"
+    "three": "^0.169.0",
+    "wrangler": "^4.147.0"
   },
   "license": "MIT"
 }

@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "procedural-3d-terrain",
+  "compatibility_date": "2026-10-01",
+
+  // Static-asset Worker: the site is plain HTML/ES modules with a CDN import
+  // map, so there is no bundler. `npm run build` copies the site into dist/.
+  // The asset directory must NOT be the repo root: `wrangler dev` watches it,
+  // and the repo contains Wrangler's own `.wrangler/` state, which is
+  // rewritten continuously and puts dev into an infinite reload loop.
+  "assets": {
+    "directory": "dist"
+  }
+}

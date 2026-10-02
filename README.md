@@ -23,6 +23,27 @@ rebuilds in ~19 ms, 256×256 in ~53 ms).
 
 ---
 
+## Deploy (Cloudflare Workers)
+
+The site is static — a Worker serves the same files with no bundler and no framework:
+
+```bash
+npm install
+npm run dev        # copy + local Worker preview at http://localhost:8787
+npm run deploy     # copy + wrangler deploy -> https://procedural-3d-terrain.<subdomain>.workers.dev
+```
+
+Both scripts run `npm run build` first: a plain copy of `index.html`, `src/` and `docs/` into
+`dist/` (gitignored, ~15 files — the repo itself still serves straight from `npm start` with no
+build step). `wrangler.jsonc` points the Worker at `dist/` rather than the repo root, because
+`wrangler dev` watches its asset directory and Wrangler rewrites `.wrangler/` state continuously —
+watching the root puts dev into an infinite reload loop.
+
+The first deploy authenticates interactively (`npx wrangler login`) or headlessly via a
+`CLOUDFLARE_API_TOKEN` with "Workers Scripts: Edit" + "Workers Routes: Edit" permissions.
+
+---
+
 ## Acceptance criteria
 
 | Requirement | Where it lives |
