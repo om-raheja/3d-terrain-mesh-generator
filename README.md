@@ -34,8 +34,8 @@ npm run deploy     # copy + wrangler deploy -> https://procedural-3d-terrain.<su
 ```
 
 Both scripts run `npm run build` first: a plain copy of `index.html`, `src/` and `docs/` into
-`dist/` (gitignored, ~15 files — the repo itself still serves straight from `npm start` with no
-build step). `wrangler.jsonc` points the Worker at `dist/` rather than the repo root, because
+`dist/` (gitignored, six files / 372 kB — the repo itself still serves straight from `npm start`
+with no build step). `wrangler.jsonc` points the Worker at `dist/` rather than the repo root, because
 `wrangler dev` watches its asset directory and Wrangler rewrites `.wrangler/` state continuously —
 watching the root puts dev into an infinite reload loop.
 
